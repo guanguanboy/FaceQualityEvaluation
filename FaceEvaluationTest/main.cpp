@@ -20,7 +20,10 @@ int main()
 	//检测人脸
 	cv::Rect2f maxface;
 
-	maxface = detectMaxFace(irFrame);
+	Anchor anchorFace;
+	anchorFace = detectMaxFace(irFrame);
+
+	maxface = anchorFace.finalbox;
 
 	//输出结果
 	std::cout << "max face x = " << maxface.x << std::endl;

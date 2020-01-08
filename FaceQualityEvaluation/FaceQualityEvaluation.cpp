@@ -7,13 +7,14 @@
 #include <opencv2\core\fast_math.hpp>
 #include <vector>
 #include "tools.h"
+#include "face_pose_three_degree.h"
 
 using namespace cv;
 using namespace std;
 
 //全局数据定义区
 ncnn::Net g_facedectec_net;
-
+FacePoseEstimate g_face_pose;
 
 int panny(int i, int(*call_back)(int a, int b))
 {
@@ -103,7 +104,7 @@ void initFaceEvaluation(std::string face_dectect_model_path)
 	//getPCANetPara(result, pcaNet);
 }
 
-cv::Rect2f detectMaxFace(cv::Mat irFrame)
+Anchor detectMaxFace(cv::Mat irFrame)
 {
 	cv::Rect2f maxFaceRect;
 	Anchor maxFace;
@@ -133,7 +134,41 @@ cv::Rect2f detectMaxFace(cv::Mat irFrame)
 		find_max_face_retinaFace(NmsFacePara, maxFace);
 	}
 
-	maxFaceRect = maxFace.finalbox;
+	//maxFaceRect = maxFace.finalbox;
 
-	return maxFaceRect;
+	return maxFace;
 }
+
+
+void calcFacePose(Anchor face, cv::Mat depthFrame, cv::Mat irFrame)
+{
+
+	cv::Mat irDivideMat;
+
+	// 红外图像10位转8位
+	irFrame.convertTo(irDivideMat, CV_8UC1, 0.25);
+
+	// 红外图像单通道转三通道
+	Mat irMatc3[3], irDivideMat3;
+	irMatc3[0] = irDivideMat.clone();
+	irMatc3[1] = irDivideMat.clone();
+	irMatc3[2] = irDivideMat.clone();
+	cv::merge(irMatc3, 3, irDivideMat3);
+
+	// 人脸姿态计算
+	g_face_pose.updata(face, depthFrame, irDivideMat3);
+	g_face_pose.calFacePose();
+	float *pose = g_face_pose.getAngle();
+
+	float Pitch = pose[0];
+	float Yaw = pose[1];
+	float Roll = pose[2];
+
+	std::cout << "Pitch = " << Pitch << std::endl;
+	std::cout << "Yaw = " << Yaw << std::endl;
+	std::cout << "Roll = " << Roll << std::endl;
+}
+
+//获取IR图像的亮度
+
+//获取IR图像的模糊度
