@@ -8,25 +8,28 @@
 #include <vector>
 #include "tools.h"
 #include "face_pose_three_degree.h"
+#include "imageProcess.h"
+#include "illuminationDetect.h"
+#include "blurDetect.h"
+#include "facepreprocessengine.h"
 
 using namespace cv;
 using namespace std;
+
+//宏定义区
+#define MAX_DEPTH_VALUE 10000
 
 //全局数据定义区
 ncnn::Net g_facedectec_net;
 FacePoseEstimate g_face_pose;
 
-int panny(int i, int(*call_back)(int a, int b))
-{
-	int aa;
-	aa = i*i;
-	call_back(i, aa);
-	return 0;
-}
-
 /*
 内部函数定义区
 */
+extern float getDeepFaceIntegrity(cv::Mat depthFrame, Anchor face);
+extern float getDeepFaceMaxCCRatio(cv::Mat depthFrame, Anchor face);
+extern void getDeepFaceLayerCountAndPrecision(cv::Mat depthFrame, Anchor face, int *pLayerCount, float *pPrecision);
+
 int find_max_face_retinaFace(vector<Anchor> &result, Anchor &maxFace) {
 	int max_index = 0;
 	float max_area = 0.0;
@@ -108,16 +111,13 @@ Anchor detectMaxFace(cv::Mat irFrame)
 {
 	cv::Rect2f maxFaceRect;
 	Anchor maxFace;
-	cv::Mat irDivideMat;
 
-	// 红外图像10位转8位
-	irFrame.convertTo(irDivideMat, CV_8UC1, 0.25);
 
 	// 红外图像单通道转三通道
 	Mat irMatc3[3], irDivideMat3;
-	irMatc3[0] = irDivideMat.clone();
-	irMatc3[1] = irDivideMat.clone();
-	irMatc3[2] = irDivideMat.clone();
+	irMatc3[0] = irFrame.clone();
+	irMatc3[1] = irFrame.clone();
+	irMatc3[2] = irFrame.clone();
 	cv::merge(irMatc3, 3, irDivideMat3);
 
 	// 多尺度人脸检测
@@ -140,19 +140,13 @@ Anchor detectMaxFace(cv::Mat irFrame)
 }
 
 
-void calcFacePose(Anchor face, cv::Mat depthFrame, cv::Mat irFrame)
+void getFacePose(cv::Mat irFrame, cv::Mat depthFrame, Anchor face, FacePosition_s *p_facepose)
 {
-
-	cv::Mat irDivideMat;
-
-	// 红外图像10位转8位
-	irFrame.convertTo(irDivideMat, CV_8UC1, 0.25);
-
 	// 红外图像单通道转三通道
 	Mat irMatc3[3], irDivideMat3;
-	irMatc3[0] = irDivideMat.clone();
-	irMatc3[1] = irDivideMat.clone();
-	irMatc3[2] = irDivideMat.clone();
+	irMatc3[0] = irFrame.clone();
+	irMatc3[1] = irFrame.clone();
+	irMatc3[2] = irFrame.clone();
 	cv::merge(irMatc3, 3, irDivideMat3);
 
 	// 人脸姿态计算
@@ -164,11 +158,204 @@ void calcFacePose(Anchor face, cv::Mat depthFrame, cv::Mat irFrame)
 	float Yaw = pose[1];
 	float Roll = pose[2];
 
-	std::cout << "Pitch = " << Pitch << std::endl;
-	std::cout << "Yaw = " << Yaw << std::endl;
-	std::cout << "Roll = " << Roll << std::endl;
+	p_facepose->Pitch = Pitch;
+	p_facepose->Yaw = Yaw;
+	p_facepose->Roll = Roll;
+
+	//定义一个结构体同时返回这三个值
+	return;
 }
 
 //获取IR图像的亮度
 
 //获取IR图像的模糊度
+
+//在原始的实现中，将亮度和模糊度这些指标的计算都糅合到了如下一个函数中
+void getFaceQuality(cv::Mat irFrame, cv::Mat imagedepth, Anchor face, FaceQuality *pfaceQuality)
+{
+	float blur, illumination;
+	cv::Mat imgresize, imageprs, image_cut, imageprs_cut;
+
+	cv::Mat image = irFrame(face.finalbox);
+
+	double scale = 0.25;
+	cv::Size dsize = cv::Size(image.cols*scale, image.rows*scale);
+	cv::resize(image, imgresize, dsize, 0, 0, 1);
+
+	//将检测出来的五个关键点的坐标转换到人脸区域的坐标中
+	for (int i = 0; i < 5; i++)
+	{
+		face.pts[i].x -= face.finalbox.x;
+		face.pts[i].y -= face.finalbox.y;
+	}
+
+	imageProcess(image, face.pts, imageprs, image_cut, imageprs_cut);
+	illuminationDetect(image, imageprs_cut, illumination);
+	float illumScale = (illumination - minILLMEAN) / (maxILLMEAN - minILLMEAN);
+	pfaceQuality->illumQuality = illumScale;
+	if (illumScale < 0)
+	{
+		pfaceQuality->illumQuality = 1;
+		return;
+	}
+
+	float distance = 0;
+	getCamDistance(imagedepth, face.pts, distance);
+	blurDetect(distance, illumination, blur);
+	pfaceQuality->blurQuality = blur;
+
+	//获取人脸深度完整性
+	pfaceQuality->depthFaceIntegrity = getDeepFaceIntegrity(imagedepth, face);
+
+	//获取人脸最大连通域占比
+	pfaceQuality->depthFaceMaxCcRatio = getDeepFaceMaxCCRatio(imagedepth, face);
+
+	//获取人脸深度图层数及量化精度值
+	int layerCount = 0;
+	float precision = 0;
+
+	getDeepFaceLayerCountAndPrecision(imagedepth, face, &layerCount, &precision);
+
+	pfaceQuality->depthFaceLayerCount = layerCount;
+	pfaceQuality->depthFacePrecision = precision;
+
+	return;
+}
+
+/*
+人脸深度完整性的计算
+计算公式：
+人脸区域非0像素点的个数/人脸区域总的像素点的个数
+返回值取值范围：0--1
+*/
+float getDeepFaceIntegrity(cv::Mat depthFrame, Anchor face)
+{
+	unsigned int deepFacePixelCount = 0;
+	unsigned int deepFaceNoneZeroPixelCount = 0;
+
+	cv::Mat deepFace = depthFrame(face.finalbox);
+
+	deepFacePixelCount = deepFace.cols * deepFace.rows;
+
+	for (int i = 0; i < deepFace.rows; i++)
+	{
+		for (int j = 0; j < deepFace.cols; j++)
+		{
+			if (deepFace.at<ushort>(i, j) != 0)
+			{
+				deepFaceNoneZeroPixelCount++;
+			}
+		}
+	}
+
+	return (deepFaceNoneZeroPixelCount * 1.0) / deepFacePixelCount;
+}
+
+/*
+以下函数用来求取连通域
+计算公式：
+最大连通域中的像素点个数/人脸区域总的像素点个数
+返回值取值范围：0--1
+*/
+float getDeepFaceMaxCCRatio(cv::Mat depthFrame, Anchor face)
+{
+	unsigned int maxccpixelcount = 0;
+	unsigned int deepFacePixelCount = 0;
+
+	float ratio = 0;
+	//将最大人脸区域的深度信息裁剪出来
+	Mat  deepFace = depthFrame(face.finalbox);
+
+	//从最大连通域的描述信息中，获取最大连通域中像素点的个数
+	FacePreProcessEngine *pfacePreProcessEngine = new FacePreProcessEngine();
+	maxccpixelcount = pfacePreProcessEngine->getBiggestCCPixelCountFromdepthFace(deepFace);
+
+	//根据公式计算人脸最大连通域占比
+	deepFacePixelCount = deepFace.cols * deepFace.rows;
+
+	ratio = maxccpixelcount*1.0 / deepFacePixelCount;
+
+	delete pfacePreProcessEngine;
+
+	return ratio;
+
+}
+
+
+int getLayerCountAndMaxMinPixelValue(Mat& deepFace, int *p_maxPixelValue, int *p_minPixelValue)
+{
+	int initalized = false;
+
+	//统计不同深度值的个数
+	bool *phistogramArray = new bool[MAX_DEPTH_VALUE];
+	int layerCount = 0;
+
+	//初始化深度值是否出现的标记
+	for (int i = 0; i < MAX_DEPTH_VALUE; i++)
+	{
+		phistogramArray[i] = false;
+	}
+
+
+	for (int i = 0; i < deepFace.rows; i++)
+	{
+		for (int j = 0; j < deepFace.cols; j++)
+		{
+			int pixelValue = deepFace.at<ushort>(i, j);
+
+			if (pixelValue  == 0)
+			{
+				continue;
+			}
+
+			phistogramArray[pixelValue] = true;
+
+			if (false == initalized)
+			{
+				*p_maxPixelValue = pixelValue;
+				*p_minPixelValue = pixelValue;
+				initalized = true;
+				continue;
+			}
+
+			if (pixelValue > *p_maxPixelValue)
+			{
+				*p_maxPixelValue = pixelValue;
+			}
+
+			if (pixelValue < *p_minPixelValue)
+			{
+				*p_minPixelValue = pixelValue;
+			}
+		}
+	}
+
+	//计算深度的层数
+	for (int i = 0; i < MAX_DEPTH_VALUE; i++)
+	{
+		if (true == phistogramArray[i])
+		{
+			layerCount++;
+		}
+	}
+
+	delete phistogramArray;
+
+	return layerCount;
+}
+
+void getDeepFaceLayerCountAndPrecision(cv::Mat depthFrame, Anchor face, int *pLayerCount, float *pPrecision)
+{
+	int layerCount = 0;
+	int maxPixelValue;
+	int minPixelValue;
+	Mat  deepFace = depthFrame(face.finalbox);
+
+	layerCount = getLayerCountAndMaxMinPixelValue(deepFace, &maxPixelValue, &minPixelValue);
+
+	*pLayerCount = layerCount;
+
+	*pPrecision = (maxPixelValue - minPixelValue) * 1.0 / (layerCount - 1);
+
+	return;
+}

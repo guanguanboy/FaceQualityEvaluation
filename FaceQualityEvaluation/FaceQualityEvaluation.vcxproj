@@ -129,12 +129,13 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <PrecompiledHeader>Use</PrecompiledHeader>
-      <Optimization>MaxSpeed</Optimization>
+      <Optimization>Disabled</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;_USRDLL;FACEQUALITYEVALUATION_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>../opencv/include;../opencv/include/opencv;../opencv/include/opencv2;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -151,15 +152,22 @@
   <ItemGroup>
     <ClInclude Include="anchor.h" />
     <ClInclude Include="anchor_generator.h" />
+    <ClInclude Include="blurDetect.h" />
     <ClInclude Include="config.h" />
+    <ClInclude Include="facepreprocessengine.h" />
     <ClInclude Include="FaceQualityEvaluation.h" />
     <ClInclude Include="face_pose_three_degree.h" />
+    <ClInclude Include="illuminationDetect.h" />
+    <ClInclude Include="imageHistogram.h" />
+    <ClInclude Include="imageProcess.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="tools.h" />
+    <ClInclude Include="util.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="anchor_generator.cpp" />
+    <ClCompile Include="blurDetect.cpp" />
     <ClCompile Include="config.cpp" />
     <ClCompile Include="dllmain.cpp">
       <CompileAsManaged Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</CompileAsManaged>
@@ -175,8 +183,11 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
       </PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="facepreprocessengine.cpp" />
     <ClCompile Include="FaceQualityEvaluation.cpp" />
     <ClCompile Include="face_pose_three_degree.cpp" />
+    <ClCompile Include="illuminationDetect.cpp" />
+    <ClCompile Include="imageProcess.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
