@@ -33,9 +33,3 @@ FACE_EVAL_API Anchor detectMaxFace(cv::Mat irFrame);
 FACE_EVAL_API void getFacePose(cv::Mat irFrame, cv::Mat depthFrame, Anchor face, FacePosition_s *p_facepose);
 
 FACE_EVAL_API void getFaceQuality(cv::Mat irFrame, cv::Mat depthFrame, Anchor face, FaceQuality *p_facequality);
-
-//FACE_EVAL_API float getDeepFaceIntegrity(cv::Mat depthFrame, Anchor face);
-//
-//FACE_EVAL_API float getDeepFaceMaxCCRatio(cv::Mat depthFrame, Anchor face);
-//
-//FACE_EVAL_API void getDeepFaceLayerCountAndPrecision(cv::Mat depthFrame, Anchor face, int *pLayerCount, float *pPrecision);
